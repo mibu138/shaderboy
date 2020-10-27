@@ -57,10 +57,10 @@ float perlinAnim(const vec2 uv, const uint width, const float t)
     grad2 = rotVec2(t, grad2);
     grad3 = rotVec2(t, grad3);
 
-    vec2 gridSt0 = (st - gridPos0);
-    vec2 gridSt1 = (st - gridPos1);
-    vec2 gridSt2 = (st - gridPos2);
-    vec2 gridSt3 = (st - gridPos3);
+    const vec2 gridSt0 = (st - gridPos0);
+    const vec2 gridSt1 = (st - gridPos1);
+    const vec2 gridSt2 = (st - gridPos2);
+    const vec2 gridSt3 = (st - gridPos3);
 
     const float dot0 = dot(gridSt0, grad0);
     const float dot1 = dot(gridSt1, grad1);
@@ -83,7 +83,6 @@ void main()
     float t = parms.time;
 
     const vec2 uvI = uv * vec2(0.1, 1.0) + vec2(t * .01, 0.0);
-    //t = 0.0;
 
     float r = perlinAnim(uvI, 16, t);
     float g = perlinAnim(uvI, 32, t + PI * 2.0/3.0);
