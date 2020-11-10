@@ -85,7 +85,7 @@ static void initStats(void)
 
 void shaderboy_Init(const char* shaderName)
 {
-    tanto_v_config.rayTraceEnabled = true;
+    tanto_v_config.rayTraceEnabled = false;
 #ifndef NDEBUG
     tanto_v_config.validationEnabled = true;
 #else
