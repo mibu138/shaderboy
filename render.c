@@ -65,22 +65,12 @@ static void initOffscreenAttachments(void)
     tanto_v_TransitionImageLayout(VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, &colorAttachment);
 }
 
-static void initNonMeshDescriptors(void)
+static void initImageDescriptors(void)
 {
-    shaderParmsBufferRegion = tanto_v_RequestBufferRegion(sizeof(struct ShaderParms), 
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, TANTO_V_MEMORY_HOST_GRAPHICS_TYPE);
-    memset(shaderParmsBufferRegion.hostData, 0, sizeof(Parms));
-
     VkDescriptorImageInfo imageInfo = {
         .imageLayout = colorAttachment.layout,
         .imageView   = colorAttachment.view,
         .sampler     = colorAttachment.sampler
-    };
-
-    VkDescriptorBufferInfo parmsInfo = {
-        .buffer = shaderParmsBufferRegion.buffer,
-        .offset = shaderParmsBufferRegion.offset,
-        .range  = shaderParmsBufferRegion.size
     };
 
     VkWriteDescriptorSet writes[] = {{
@@ -91,7 +81,24 @@ static void initNonMeshDescriptors(void)
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .pImageInfo = &imageInfo
-    },{
+    }};
+
+    vkUpdateDescriptorSets(device, TANTO_ARRAY_SIZE(writes), writes, 0, NULL);
+}
+
+static void initNonMeshDescriptors(void)
+{
+    shaderParmsBufferRegion = tanto_v_RequestBufferRegion(sizeof(struct ShaderParms), 
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, TANTO_V_MEMORY_HOST_GRAPHICS_TYPE);
+    memset(shaderParmsBufferRegion.hostData, 0, sizeof(Parms));
+
+    VkDescriptorBufferInfo parmsInfo = {
+        .buffer = shaderParmsBufferRegion.buffer,
+        .offset = shaderParmsBufferRegion.offset,
+        .range  = shaderParmsBufferRegion.size
+    };
+
+    VkWriteDescriptorSet writes[] = {{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstArrayElement = 0,
         .dstSet = descriptorSets[R_DESC_SET_MAIN],
@@ -105,7 +112,7 @@ static void initNonMeshDescriptors(void)
     vkUpdateDescriptorSets(device, TANTO_ARRAY_SIZE(writes), writes, 0, NULL);
 }
 
-static void initPipelines(void)
+static void initDescriptorSets(void)
 {
     const Tanto_R_DescriptorSet descriptorSets[] = {{
         .id = R_DESC_SET_MAIN,
@@ -125,6 +132,11 @@ static void initPipelines(void)
         }}
     }};
 
+    tanto_r_InitDescriptorSets(descriptorSets, TANTO_ARRAY_SIZE(descriptorSets));
+}
+
+static void initPipelineLayouts(void)
+{
     const Tanto_R_PipelineLayout pipelayouts[] = {{
         .id = R_PIPE_LAYOUT_MAIN, 
         .descriptorSetCount = 1, 
@@ -138,6 +150,12 @@ static void initPipelines(void)
         .pushConstantCount = 0,
         .pushConstantsRanges = {}
     }};
+
+    tanto_r_InitPipelineLayouts(pipelayouts, TANTO_ARRAY_SIZE(pipelayouts));
+}
+
+static void initPipelines(void)
+{
 
     char shaderPath[255];
     sprintf(shaderPath, "%s/%s-frag.spv", SPVDIR, SHADER_NAME); 
@@ -163,8 +181,6 @@ static void initPipelines(void)
         }
     }};
 
-    tanto_r_InitDescriptorSets(descriptorSets, TANTO_ARRAY_SIZE(descriptorSets));
-    tanto_r_InitPipelineLayouts(pipelayouts, TANTO_ARRAY_SIZE(pipelayouts));
     tanto_r_InitPipelines(pipeInfos, TANTO_ARRAY_SIZE(pipeInfos));
 }
 
@@ -179,7 +195,7 @@ static void initFramebuffers(void)
         .width  = TANTO_WINDOW_WIDTH,
         .renderPass = offscreenRenderPass,
         .attachmentCount = 2,
-        .pAttachments = offscreenAttachments 
+        .pAttachments = offscreenAttachments
     };
 
     V_ASSERT( vkCreateFramebuffer(device, &framebufferInfo, NULL, &offscreenFramebuffer) );
@@ -234,10 +250,13 @@ void r_InitRenderer()
 {
     assert(SHADER_NAME);
 
+    initDescriptorSets();
+    initPipelineLayouts();
     initPipelines();
 
     initOffscreenAttachments();
 
+    initImageDescriptors();
     initNonMeshDescriptors();
 
     initFramebuffers();
@@ -279,6 +298,30 @@ void r_UpdateRenderCommands(void)
     V_ASSERT( vkEndCommandBuffer(frame->commandBuffer) );
 }
 
+void r_RecreateSwapchain(void)
+{
+    vkDeviceWaitIdle(device);
+
+    r_CleanUp();
+    tanto_r_CleanUpJustPipelines();
+
+    curFrameIndex = 0;
+    frameCounter = 0;
+    tanto_v_RecreateSwapchain();
+    initOffscreenAttachments();
+    initPipelines();
+    initImageDescriptors();
+    initFramebuffers();
+
+    for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
+    {
+        tanto_r_RequestFrame();
+        r_UpdateRenderCommands();
+        tanto_r_PresentFrame();
+        vkDeviceWaitIdle(device);
+    }
+}
+
 struct ShaderParms* r_GetParms(void)
 {
     return (struct ShaderParms*)shaderParmsBufferRegion.hostData;
@@ -287,6 +330,10 @@ struct ShaderParms* r_GetParms(void)
 void r_CleanUp(void)
 {
     vkDestroyFramebuffer(device, offscreenFramebuffer, NULL);
+    for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
+    {
+        vkDestroyFramebuffer(device, swapchainFramebuffers[i], NULL);
+    }
     tanto_v_DestroyImage(colorAttachment);
     tanto_v_DestroyImage(depthAttachment);
 }

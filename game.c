@@ -46,6 +46,12 @@ void g_Responder(const Tanto_I_Event *event)
         case TANTO_I_MOUSEUP:
         {
         } break;
+        case TANTO_I_RESIZE:
+        {
+            TANTO_WINDOW_WIDTH  = event->data.resizeData.width; 
+            TANTO_WINDOW_HEIGHT = event->data.resizeData.height;
+            r_RecreateSwapchain();
+        } break;
         default: break;
     }
 }

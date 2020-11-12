@@ -97,7 +97,7 @@ void shaderboy_Init(const char* shaderName)
     tanto_v_Init();
     printf("Video initialized\n");
     tanto_v_InitSurfaceXcb(d_XcbWindow.connection, d_XcbWindow.window);
-    tanto_v_InitSwapchain(NULL);
+    //tanto_v_InitSwapchain(NULL);
     printf("Swapchain initialized\n");
     tanto_r_Init();
     printf("Renderer initialized\n");
@@ -115,6 +115,7 @@ void shaderboy_StartLoop(void)
 
     parms.shouldRun = true;
     parms.renderNeedsUpdate = false;
+    bool presentationSuccess = true;
 
     while( parms.shouldRun ) 
     {
@@ -123,7 +124,8 @@ void shaderboy_StartLoop(void)
         tanto_i_GetEvents();
         tanto_i_ProcessEvents();
 
-        //r_WaitOnQueueSubmit(); // possibly don't need this due to render pass
+        if (!presentationSuccess)
+            r_RecreateSwapchain();
 
         g_Update();
 
@@ -141,8 +143,12 @@ void shaderboy_StartLoop(void)
         }
         else
         {
-            tanto_r_RequestFrame();
-            tanto_r_PresentFrame();
+            Tanto_R_Frame* frame = tanto_r_RequestFrame();
+            printf("frame: 0x%p \n", frame);
+            if (frame != NULL)
+                presentationSuccess = tanto_r_PresentFrame();
+            else
+                printf("Failed to retrieve frame. Likely window resized\n");
         }
 
         timer.stopFn(&timer);
@@ -150,6 +156,10 @@ void shaderboy_StartLoop(void)
         updateStats(&timer, &stats);
 
         printf("Delta ns: %ld\n", stats.nsDelta);
+        if (!presentationSuccess)
+        {
+            printf("Presentation failure\n");
+        }
 
         sleepLoop(&stats);
     }
