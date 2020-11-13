@@ -22,14 +22,12 @@ static Tanto_V_Image depthAttachment;
 static VkFramebuffer offscreenFramebuffer;
 static VkFramebuffer swapchainFramebuffers[TANTO_FRAME_COUNT];
 
+static VkPipeline pipelineMain;
+static VkPipeline pipelinePost;
+
 static Tanto_V_BufferRegion shaderParmsBufferRegion;
 
 const char* SHADER_NAME;
-
-typedef enum {
-    R_PIPE_MAIN,
-    R_PIPE_POST
-} R_PipelineId;
 
 typedef enum {
     R_PIPE_LAYOUT_MAIN,
@@ -156,12 +154,10 @@ static void initPipelineLayouts(void)
 
 static void initPipelines(void)
 {
-
     char shaderPath[255];
     sprintf(shaderPath, "%s/%s-frag.spv", SPVDIR, SHADER_NAME); 
 
-    const Tanto_R_PipelineInfo pipeInfos[] = {{
-        .id       = R_PIPE_MAIN,
+    const Tanto_R_PipelineInfo pipeInfoMain = {
         .type     = TANTO_R_PIPELINE_POSTPROC_TYPE,
         .layoutId = R_PIPE_LAYOUT_MAIN,
         .payload.rasterInfo = {
@@ -170,8 +166,9 @@ static void initPipelines(void)
             .sampleCount = VK_SAMPLE_COUNT_1_BIT,
             .vertexDescription = tanto_r_GetVertexDescription3D_Simple()
         }
-    },{
-        .id       = R_PIPE_POST,
+    };
+
+    const Tanto_R_PipelineInfo pipeInfoPost = {
         .type     = TANTO_R_PIPELINE_POSTPROC_TYPE,
         .layoutId = R_PIPE_LAYOUT_POST,
         .payload.rasterInfo = {
@@ -179,9 +176,10 @@ static void initPipelines(void)
             .fragShader = SPVDIR"/post-frag.spv",
             .sampleCount = VK_SAMPLE_COUNT_1_BIT,
         }
-    }};
+    };
 
-    tanto_r_InitPipelines(pipeInfos, TANTO_ARRAY_SIZE(pipeInfos));
+    tanto_r_CreatePipeline(&pipeInfoMain, &pipelineMain);
+    tanto_r_CreatePipeline(&pipeInfoPost, &pipelinePost);
 }
 
 static void initFramebuffers(void)
@@ -202,9 +200,10 @@ static void initFramebuffers(void)
 
     for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
     {
+        Tanto_R_Frame* frame = tanto_r_GetFrame(i);
         framebufferInfo.renderPass = swapchainRenderPass;
         framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = &frames[i].swapImage.view;
+        framebufferInfo.pAttachments = &frame->swapImage.view;
 
         V_ASSERT( vkCreateFramebuffer(device, &framebufferInfo, NULL, &swapchainFramebuffers[i]) );
     }
@@ -212,7 +211,7 @@ static void initFramebuffers(void)
 
 static void mainRender(const VkCommandBuffer* cmdBuf, const VkRenderPassBeginInfo* rpassInfo)
 {
-    vkCmdBindPipeline(*cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[R_PIPE_MAIN]);
+    vkCmdBindPipeline(*cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineMain);
 
     vkCmdBindDescriptorSets(
         *cmdBuf, 
@@ -230,7 +229,7 @@ static void mainRender(const VkCommandBuffer* cmdBuf, const VkRenderPassBeginInf
 
 static void postProc(const VkCommandBuffer* cmdBuf, const VkRenderPassBeginInfo* rpassInfo)
 {
-    vkCmdBindPipeline(*cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[R_PIPE_POST]);
+    vkCmdBindPipeline(*cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelinePost);
 
     vkCmdBindDescriptorSets(
         *cmdBuf, 
@@ -262,9 +261,9 @@ void r_InitRenderer()
     initFramebuffers();
 }
 
-void r_UpdateRenderCommands(void)
+void r_UpdateRenderCommands(const int8_t frameIndex)
 {
-    Tanto_R_Frame* frame = &frames[curFrameIndex];
+    Tanto_R_Frame* frame = tanto_r_GetFrame(frameIndex);
     vkResetCommandPool(device, frame->commandPool, 0);
     VkCommandBufferBeginInfo cbbi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     V_ASSERT( vkBeginCommandBuffer(frame->commandBuffer, &cbbi) );
@@ -289,7 +288,7 @@ void r_UpdateRenderCommands(void)
         .pClearValues = clears,
         .renderArea = {{0, 0}, {TANTO_WINDOW_WIDTH, TANTO_WINDOW_HEIGHT}},
         .renderPass =  swapchainRenderPass,
-        .framebuffer = swapchainFramebuffers[curFrameIndex] 
+        .framebuffer = swapchainFramebuffers[frameIndex] 
     };
 
     mainRender(&frame->commandBuffer, &rpassOffscreen);
@@ -303,11 +302,8 @@ void r_RecreateSwapchain(void)
     vkDeviceWaitIdle(device);
 
     r_CleanUp();
-    tanto_r_CleanUpJustPipelines();
 
-    curFrameIndex = 0;
-    frameCounter = 0;
-    tanto_v_RecreateSwapchain();
+    tanto_r_RecreateSwapchain();
     initOffscreenAttachments();
     initPipelines();
     initImageDescriptors();
@@ -315,10 +311,7 @@ void r_RecreateSwapchain(void)
 
     for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
     {
-        tanto_r_RequestFrame();
-        r_UpdateRenderCommands();
-        tanto_r_PresentFrame();
-        vkDeviceWaitIdle(device);
+        r_UpdateRenderCommands(i);
     }
 }
 
@@ -336,4 +329,6 @@ void r_CleanUp(void)
     }
     tanto_v_DestroyImage(colorAttachment);
     tanto_v_DestroyImage(depthAttachment);
+    vkDestroyPipeline(device, pipelineMain, NULL);
+    vkDestroyPipeline(device, pipelinePost, NULL);
 }

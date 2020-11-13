@@ -22,7 +22,7 @@ struct ShaderParms {
 extern const char* SHADER_NAME;
 
 void  r_InitRenderer(void);
-void  r_UpdateRenderCommands(void);
+void  r_UpdateRenderCommands(const int8_t frameIndex);
 int   r_GetSelectionPos(Vec3* v);
 void  r_LoadMesh(Tanto_R_Mesh mesh);
 void  r_ClearMesh(void);

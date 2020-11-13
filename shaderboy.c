@@ -23,66 +23,6 @@
 #define NS_TARGET 16666666 // 1 / 60 seconds
 #define NS_PER_S  1000000000
 
-struct Timer {
-    struct timespec startTime;
-    struct timespec endTime;
-    clockid_t clockId;
-    void (*startFn)(struct Timer*);
-    void (*stopFn)(struct Timer*);
-} timer;
-
-static void timerStart(struct Timer* t)
-{
-    clock_gettime(t->clockId, &t->startTime);
-}
-
-static void timerStop(struct Timer* t)
-{
-    clock_gettime(t->clockId, &t->endTime);
-}
-
-struct Stats {
-    uint64_t frameCount;
-    uint64_t nsTotal;
-    unsigned long nsDelta;
-    uint32_t shortestFrame;
-    uint32_t longestFrame;
-} stats;
-
-static void updateStats(const struct Timer* t, struct Stats* s)
-{
-    s->nsDelta  = (t->endTime.tv_sec * NS_PER_S + t->endTime.tv_nsec) - (t->startTime.tv_sec * NS_PER_S + t->startTime.tv_nsec);
-    s->nsTotal += s->nsDelta;
-
-    if (s->nsDelta > s->longestFrame) s->longestFrame = s->nsDelta;
-    if (s->nsDelta < s->shortestFrame) s->shortestFrame = s->nsDelta;
-
-    s->frameCount++;
-}
-
-static void sleepLoop(const struct Stats* s)
-{
-    struct timespec diffTime;
-    diffTime.tv_nsec = NS_TARGET > s->nsDelta ? NS_TARGET - s->nsDelta : 0;
-    diffTime.tv_sec  = 0;
-    // we could use the second parameter to handle interrupts and signals
-    nanosleep(&diffTime, NULL);
-}
-
-static void initTimer(void)
-{
-    memset(&timer, 0, sizeof(timer));
-    timer.clockId = CLOCK_MONOTONIC;
-    timer.startFn = timerStart;
-    timer.stopFn  = timerStop;
-}
-
-static void initStats(void)
-{
-    memset(&stats, 0, sizeof(stats));
-    stats.longestFrame = UINT32_MAX;
-}
-
 void shaderboy_Init(const char* shaderName)
 {
     tanto_v_config.rayTraceEnabled = false;
@@ -97,7 +37,6 @@ void shaderboy_Init(const char* shaderName)
     tanto_v_Init();
     printf("Video initialized\n");
     tanto_v_InitSurfaceXcb(d_XcbWindow.connection, d_XcbWindow.window);
-    //tanto_v_InitSwapchain(NULL);
     printf("Swapchain initialized\n");
     tanto_r_Init();
     printf("Renderer initialized\n");
@@ -110,57 +49,60 @@ void shaderboy_Init(const char* shaderName)
 
 void shaderboy_StartLoop(void)
 {
-    initTimer();
-    initStats();
+    Tanto_Timer     timer;
+    Tanto_LoopStats stats;
+
+    tanto_TimerInit(&timer);
+    tanto_LoopStatsInit(&stats);
 
     parms.shouldRun = true;
     parms.renderNeedsUpdate = false;
     bool presentationSuccess = true;
 
+    for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
+    {
+        r_UpdateRenderCommands(i);
+    }
+
     while( parms.shouldRun ) 
     {
-        timer.startFn(&timer);
+        tanto_TimerStart(&timer);
 
         tanto_i_GetEvents();
         tanto_i_ProcessEvents();
 
-        if (!presentationSuccess)
-            r_RecreateSwapchain();
-
         g_Update();
 
-        if (parms.renderNeedsUpdate || stats.frameCount == 0 ) 
+        if (parms.renderNeedsUpdate)
         {
-            for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
+            tanto_r_WaitOnQueueSubmit();
+            for (int8_t i = 0; i < TANTO_FRAME_COUNT; i++) 
             {
-                if (parms.renderNeedsUpdate)
-                    tanto_r_WaitOnQueueSubmit();
-                tanto_r_RequestFrame();
-                r_UpdateRenderCommands();
-                tanto_r_PresentFrame();
+                r_UpdateRenderCommands(i);
             }
             parms.renderNeedsUpdate = false;
         }
         else
         {
-            Tanto_R_Frame* frame = tanto_r_RequestFrame();
-            printf("frame: 0x%p \n", frame);
-            if (frame != NULL)
+            int8_t frameIndex = tanto_r_RequestFrame();
+            if (frameIndex >= 0) // success
                 presentationSuccess = tanto_r_PresentFrame();
             else
+            {
+                presentationSuccess = false;
                 printf("Failed to retrieve frame. Likely window resized\n");
+            }
         }
 
-        timer.stopFn(&timer);
+        if (!presentationSuccess)
+            r_RecreateSwapchain();
 
-        updateStats(&timer, &stats);
+        tanto_TimerStop(&timer);
+
+        tanto_LoopStatsUpdate(&timer, &stats);
 
         printf("Delta ns: %ld\n", stats.nsDelta);
-        if (!presentationSuccess)
-        {
-            printf("Presentation failure\n");
-        }
 
-        sleepLoop(&stats);
+        tanto_LoopSleep(&stats, NS_TARGET);
     }
 }
