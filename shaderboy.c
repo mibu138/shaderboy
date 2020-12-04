@@ -32,7 +32,9 @@ void shaderboy_Init(const char* shaderName)
     tanto_v_config.validationEnabled = false;
 #endif
     SHADER_NAME = shaderName;
-    tanto_d_Init();
+    TANTO_WINDOW_WIDTH = 2000;
+    TANTO_WINDOW_HEIGHT = 2000;
+    tanto_d_Init(false);
     printf("Display initialized\n");
     tanto_v_Init();
     printf("Video initialized\n");
@@ -101,7 +103,7 @@ void shaderboy_StartLoop(void)
 
         tanto_LoopStatsUpdate(&timer, &stats);
 
-        printf("Delta ns: %ld\n", stats.nsDelta);
+        //printf("Delta ns: %ld\n", stats.nsDelta);
 
         tanto_LoopSleep(&stats, NS_TARGET);
     }

@@ -12,7 +12,6 @@
 #include <tanto/r_pipeline.h>
 #include <tanto/r_raytrace.h>
 #include <tanto/v_command.h>
-#include <vulkan/vulkan_core.h>
 
 #define SPVDIR "./shaders/spv"
 
@@ -45,7 +44,7 @@ static void initOffscreenAttachments(void)
     //initDepthAttachment();
     depthAttachment = tanto_v_CreateImage(
             TANTO_WINDOW_WIDTH, TANTO_WINDOW_HEIGHT,
-            depthFormat,
+            tanto_r_GetDepthFormat(),
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
             VK_IMAGE_USAGE_SAMPLED_BIT,
             VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -53,7 +52,7 @@ static void initOffscreenAttachments(void)
 
     colorAttachment = tanto_v_CreateImageAndSampler(
             TANTO_WINDOW_WIDTH, TANTO_WINDOW_HEIGHT, 
-            offscreenColorFormat,
+            tanto_r_GetOffscreenColorFormat(),
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | 
             VK_IMAGE_USAGE_SAMPLED_BIT,
             VK_IMAGE_ASPECT_COLOR_BIT,
@@ -158,22 +157,25 @@ static void initPipelines(void)
     sprintf(shaderPath, "%s/%s-frag.spv", SPVDIR, SHADER_NAME); 
 
     const Tanto_R_PipelineInfo pipeInfoMain = {
-        .type     = TANTO_R_PIPELINE_POSTPROC_TYPE,
+        .type     = TANTO_R_PIPELINE_RASTER_TYPE,
         .layoutId = R_PIPE_LAYOUT_MAIN,
         .payload.rasterInfo = {
-            .renderPass = offscreenRenderPass,
+            .renderPass = tanto_r_GetOffscreenRenderPass(),
+            .frontFace  = VK_FRONT_FACE_CLOCKWISE,
+            .vertShader = tanto_r_FullscreenTriVertShader(),
             .fragShader = shaderPath,
             .sampleCount = VK_SAMPLE_COUNT_1_BIT,
-            .vertexDescription = tanto_r_GetVertexDescription3D_Simple()
         }
     };
 
     const Tanto_R_PipelineInfo pipeInfoPost = {
-        .type     = TANTO_R_PIPELINE_POSTPROC_TYPE,
+        .type     = TANTO_R_PIPELINE_RASTER_TYPE,
         .layoutId = R_PIPE_LAYOUT_POST,
         .payload.rasterInfo = {
-            .renderPass = swapchainRenderPass, 
+            .renderPass = tanto_r_GetSwapchainRenderPass(), 
+            .frontFace  = VK_FRONT_FACE_CLOCKWISE,
             .fragShader = SPVDIR"/post-frag.spv",
+            .vertShader = tanto_r_FullscreenTriVertShader(),
             .sampleCount = VK_SAMPLE_COUNT_1_BIT,
         }
     };
@@ -191,7 +193,7 @@ static void initFramebuffers(void)
         .layers = 1,
         .height = TANTO_WINDOW_HEIGHT,
         .width  = TANTO_WINDOW_WIDTH,
-        .renderPass = offscreenRenderPass,
+        .renderPass = tanto_r_GetOffscreenRenderPass(),
         .attachmentCount = 2,
         .pAttachments = offscreenAttachments
     };
@@ -201,7 +203,7 @@ static void initFramebuffers(void)
     for (int i = 0; i < TANTO_FRAME_COUNT; i++) 
     {
         Tanto_R_Frame* frame = tanto_r_GetFrame(i);
-        framebufferInfo.renderPass = swapchainRenderPass;
+        framebufferInfo.renderPass = tanto_r_GetSwapchainRenderPass();
         framebufferInfo.attachmentCount = 1;
         framebufferInfo.pAttachments = &frame->swapImage.view;
 
@@ -278,7 +280,7 @@ void r_UpdateRenderCommands(const int8_t frameIndex)
         .clearValueCount = 2,
         .pClearValues = clears,
         .renderArea = {{0, 0}, {TANTO_WINDOW_WIDTH, TANTO_WINDOW_HEIGHT}},
-        .renderPass =  offscreenRenderPass,
+        .renderPass =  tanto_r_GetOffscreenRenderPass(),
         .framebuffer = offscreenFramebuffer,
     };
 
@@ -287,7 +289,7 @@ void r_UpdateRenderCommands(const int8_t frameIndex)
         .clearValueCount = 1,
         .pClearValues = clears,
         .renderArea = {{0, 0}, {TANTO_WINDOW_WIDTH, TANTO_WINDOW_HEIGHT}},
-        .renderPass =  swapchainRenderPass,
+        .renderPass = tanto_r_GetSwapchainRenderPass(),
         .framebuffer = swapchainFramebuffers[frameIndex] 
     };
 
@@ -327,8 +329,8 @@ void r_CleanUp(void)
     {
         vkDestroyFramebuffer(device, swapchainFramebuffers[i], NULL);
     }
-    tanto_v_DestroyImage(colorAttachment);
-    tanto_v_DestroyImage(depthAttachment);
+    tanto_v_FreeImage(&colorAttachment);
+    tanto_v_FreeImage(&depthAttachment);
     vkDestroyPipeline(device, pipelineMain, NULL);
     vkDestroyPipeline(device, pipelinePost, NULL);
 }

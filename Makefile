@@ -3,8 +3,8 @@ GLC = glslc
 
 CFLAGS = -Wall -Wno-missing-braces -Wno-attributes -fPIC
 LDFLAGS = -L/opt/hfs18.0/dsolib -L/$(HOME)/lib
-INFLAGS = -I/opt/hfs18.0/toolkit/include/HAPI -I$(HOME)/dev
-LIBS = -lm -ltanto -lvulkan -lxcb -lxcb-keysyms -lHAPIL
+INFLAGS = -I$(HOME)/dev
+LIBS = -lm -ltanto -lvulkan -lxcb -lxcb-keysyms -lfreetype
 GLFLAGS = --target-env=vulkan1.2
 BIN = bin
 LIB = $(HOME)/lib
@@ -37,10 +37,10 @@ debug: all
 release: CFLAGS += -DNDEBUG -O3
 release: all
 
-all: bin lib tags shaders
+all: bin lib tags shaders tanto
 
 FRAGS := $(patsubst %.frag,$(SPV)/%-frag.spv,$(notdir $(wildcard $(GLSL)/*.frag)))
-VERTS := $(patsubst %.frag,$(SPV)/%-vert.spv,$(notdir $(wildcard $(GLSL)/*.vert)))
+VERTS := $(patsubst %.vert,$(SPV)/%-vert.spv,$(notdir $(wildcard $(GLSL)/*.vert)))
 shaders: $(FRAGS) $(VERTS)
 
 clean: 
@@ -55,6 +55,10 @@ bin: main.c $(OBJS) $(DEPS) shaders
 lib: $(OBJS) $(DEPS) shaders
 	$(CC) -shared -o $(LIB)/lib$(LIBNAME).so $(OBJS)
 
+.PHONY: tanto clean
+tanto:
+	cd tanto ; make ; cd ..
+
 staticlib: $(OBJS) $(DEPS) shaders
 	ar rcs $(LIB)/lib$(NAME).a $(OBJS)
 
@@ -64,7 +68,7 @@ $(O)/%.o:  %.c $(DEPS)
 $(SPV)/%-vert.spv: $(GLSL)/%.vert $(DEPS)
 	$(GLC) $(GLFLAGS) $< -o $@
 
-$(SPV)/%-frag.spv: $(GLSL)/%.frag
+$(SPV)/%-frag.spv: $(GLSL)/%.frag $(DEPS)
 	$(GLC) $(GLFLAGS) $< -o $@
 
 $(SPV)/%-rchit.spv: $(GLSL)/%.rchit

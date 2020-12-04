@@ -82,12 +82,14 @@ void main()
 {
     float t = parms.time;
 
-    const vec2 uvI = uv * vec2(0.1, 1.0) + vec2(t * .01, 0.0);
+    const vec2 uvI = uv * vec2(1.0, 1.0) + vec2(t * .01, 0.0);
     //t = 0.0;
 
     float r = perlinAnim(uvI, 16, t);
     float g = perlinAnim(uvI, 32, t + PI * 2.0/3.0);
     float b = perlinAnim(uvI, 8, t + PI * 2.0/3.0);
+
+    vec4 color0  = vec4(b, b, b, 1.0);
 
     vec2 rg = vec2(r, g);
     vec2 gb = vec2(g, b);
@@ -99,6 +101,6 @@ void main()
 
     b = perlinAnim(rg, 8, 0);
 
-    vec4 color = vec4(0.0, b * .5, b, 1.0);
-    outColor = color;
+    vec4 color1 = vec4(g, b * .5, b, 1.0);
+    outColor = color0;
 }

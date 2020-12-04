@@ -4,17 +4,6 @@
 #include <tanto/r_geo.h>
 #include "common.h"
 
-typedef struct {
-    Vec4 clearColor;
-    Vec3 lightDir;
-    float lightIntensity;
-    int   lightType;
-    uint32_t posOffset;
-    uint32_t colorOffset;
-    uint32_t normalOffset;
-    uint32_t uvwOffset;
-} RtPushConstants;
-
 struct ShaderParms {
     float time;
 };
